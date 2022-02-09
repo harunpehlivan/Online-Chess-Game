@@ -15,7 +15,7 @@ try:
     s.bind((server, port))
 
 except socket.error as e:
-    print(str(e))
+    print(e)
 
 s.listen()
 print("[START] Waiting for a connection")
@@ -24,7 +24,7 @@ connections = 0
 
 games = {0:Board(8, 8)}
 
-spectartor_ids = [] 
+spectartor_ids = []
 specs = 0
 
 def read_specs():
@@ -33,8 +33,7 @@ def read_specs():
     spectartor_ids = []
     try:
         with open("specs.txt", "r") as f:
-            for line in f:
-                spectartor_ids.append(line.strip())
+            spectartor_ids.extend(line.strip() for line in f)
     except:
         print("[ERROR] No specs.txt file found, creating one...")
         open("specs.txt", "w")
@@ -47,11 +46,7 @@ def threaded_client(conn, game, spec=False):
         name = None
         bo = games[game]
 
-        if connections % 2 == 0:
-            currentId = "w"
-        else:
-            currentId = "b"
-
+        currentId = "w" if connections % 2 == 0 else "b"
         bo.start_user = currentId
 
         # Pickle the object and send it to the server
@@ -73,47 +68,42 @@ def threaded_client(conn, game, spec=False):
                 data = d.decode("utf-8")
                 if not d:
                     break
-                else:
-                    if data.count("select") > 0:
-                        all = data.split(" ")
-                        col = int(all[1])
-                        row = int(all[2])
-                        color = all[3]
-                        bo.select(col, row, color)
+                if data.count("select") > 0:
+                    all = data.split(" ")
+                    col = int(all[1])
+                    row = int(all[2])
+                    color = all[3]
+                    bo.select(col, row, color)
 
-                    if data == "winner b":
-                        bo.winner = "b"
-                        print("[GAME] Player b won in game", game)
-                    if data == "winner w":
-                        bo.winner = "w"
-                        print("[GAME] Player w won in game", game)
+                if data == "winner b":
+                    bo.winner = "b"
+                    print("[GAME] Player b won in game", game)
+                if data == "winner w":
+                    bo.winner = "w"
+                    print("[GAME] Player w won in game", game)
 
-                    if data == "update moves":
-                        bo.update_moves()
+                if data == "update moves":
+                    bo.update_moves()
 
-                    if data.count("name") == 1:
-                        name = data.split(" ")[1]
-                        if currentId == "b":
-                            bo.p2Name = name
-                        elif currentId == "w":
-                            bo.p1Name = name
+                if data.count("name") == 1:
+                    name = data.split(" ")[1]
+                    if currentId == "b":
+                        bo.p2Name = name
+                    elif currentId == "w":
+                        bo.p1Name = name
 
-                    #print("Recieved board from", currentId, "in game", game)
+                if bo.ready:
+                    if bo.turn == "w":
+                        bo.time1 = 900 - (time.time() - bo.startTime) - bo.storedTime1
+                    else:
+                        bo.time2 = 900 - (time.time() - bo.startTime) - bo.storedTime2
 
-                    if bo.ready:
-                        if bo.turn == "w":
-                            bo.time1 = 900 - (time.time() - bo.startTime) - bo.storedTime1
-                        else:
-                            bo.time2 = 900 - (time.time() - bo.startTime) - bo.storedTime2
-
-                    sendData = pickle.dumps(bo)
-                    #print("Sending board to player", currentId, "in game", game)
-
+                sendData = pickle.dumps(bo)
                 conn.sendall(sendData)
 
             except Exception as e:
                 print(e)
-        
+
         connections -= 1
         try:
             del games[game]
@@ -121,8 +111,6 @@ def threaded_client(conn, game, spec=False):
         except:
             pass
         print("[DISCONNECT] Player", name, "left game", game)
-        conn.close()
-
     else:
         available_games = list(games.keys())
         game_ind = 0
@@ -139,32 +127,32 @@ def threaded_client(conn, game, spec=False):
                 data = d.decode("utf-8")
                 if not d:
                     break
-                else:
-                    try:
-                        if data == "forward":
-                            print("[SPECTATOR] Moved Games forward")
-                            game_ind += 1
-                            if game_ind >= len(available_games):
-                                game_ind = 0
-                        elif data == "back":
-                            print("[SPECTATOR] Moved Games back")
-                            game_ind -= 1
-                            if game_ind < 0:
-                                game_ind = len(available_games) -1
+                try:
+                    if data == "forward":
+                        print("[SPECTATOR] Moved Games forward")
+                        game_ind += 1
+                        if game_ind >= len(available_games):
+                            game_ind = 0
+                    elif data == "back":
+                        print("[SPECTATOR] Moved Games back")
+                        game_ind -= 1
+                        if game_ind < 0:
+                            game_ind = len(available_games) -1
 
-                        bo = games[available_games[game_ind]]
-                    except:
-                        print("[ERROR] Invalid Game Recieved from Spectator")
+                    bo = games[available_games[game_ind]]
+                except:
+                    print("[ERROR] Invalid Game Recieved from Spectator")
 
-                    sendData = pickle.dumps(bo)
-                    conn.sendall(sendData)
+                sendData = pickle.dumps(bo)
+                conn.sendall(sendData)
 
             except Exception as e:
                 print(e)
 
         print("[DISCONNECT] Spectator left game", game)
         specs -= 1
-        conn.close()
+
+    conn.close()
 
 
 while True:
